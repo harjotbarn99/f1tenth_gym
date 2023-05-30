@@ -25,9 +25,9 @@ Author: Hongrui Zheng
 '''
 
 # gym imports
-import gym
-from gym import error, spaces, utils
-from gym.utils import seeding
+import gymnasium as gym
+from gymnasium import error, spaces, utils
+from gymnasium.utils import seeding
 
 # base classes
 from f110_gym.envs.base_classes import Simulator, Integrator
@@ -90,12 +90,14 @@ class F110Env(gym.Env):
 
             ego_idx (int, default=0): ego's index in list of agents
     """
-    metadata = {'render.modes': ['human', 'human_fast']}
-
+    metadata = {'render_modes': ['human', 'human_fast']}
+    # TODO: add more metadata, render_fps.
+    
     # rendering
     renderer = None
     current_obs = None
     render_callbacks = []
+    
 
     def __init__(self, **kwargs):        
         # kwargs extraction
@@ -186,6 +188,13 @@ class F110Env(gym.Env):
 
         # stateful observations for rendering
         self.render_obs = None
+
+        # setup action space an obsevation space
+        # action space has 2 values which are continuous first one is ateering angle ranging params['s_min'] to params['s_max'] and second one is velocity ranging params['v_min'] to params['v_max']
+        self.action_space = spaces.Box(low=np.array([self.params['s_min'], self.params['v_min']]), high=np.array([self.params['s_max'], self.params['v_max']]), dtype=np.float64)
+
+        # observation space is a dictionary with keys 'ego_idx' which is just an int, 'scans' which is a list of 360 values which are floats, 'poses_x' which is a list of floats, 'poses_y' which is a list of floats, 'poses_theta' which is a list of floats, 'linear_vels_x' which is a list of floats, 'linear_vels_y' which is a list of floats, 'ang_vels_z' which is a list of floats, 'collisions' which is a list of 0s and 1s, 'lap_times' which is a list of floats, 'lap_counts' which is a list of ints
+        self.observation_space = spaces.Dict({'ego_idx': spaces.Discrete(self.num_agents), 'scans': spaces.Box(low=0.0, high=100.0, shape=(self.num_agents, 1080), dtype=np.float64), 'poses_x': spaces.Box(low=-np.inf, high=np.inf, shape=(self.num_agents,), dtype=np.float64), 'poses_y': spaces.Box(low=-np.inf, high=np.inf, shape=(self.num_agents,), dtype=np.float64), 'poses_theta': spaces.Box(low=-np.inf, high=np.inf, shape=(self.num_agents,), dtype=np.float64), 'linear_vels_x': spaces.Box(low=-np.inf, high=np.inf, shape=(self.num_agents,), dtype=np.float64), 'linear_vels_y': spaces.Box(low=-np.inf, high=np.inf, shape=(self.num_agents,), dtype=np.float64), 'ang_vels_z': spaces.Box(low=-np.inf, high=np.inf, shape=(self.num_agents,), dtype=np.float64), 'collisions': spaces.Box(low=0, high=1, shape=(self.num_agents,), dtype=np.float64), 'lap_times': spaces.Box(low=-np.inf, high=np.inf, shape=(self.num_agents,), dtype=np.float64), 'lap_counts': spaces.Box(low=-np.inf, high=np.inf, shape=(self.num_agents,), dtype=np.float64)})
 
     def __del__(self):
         """
@@ -290,12 +299,14 @@ class F110Env(gym.Env):
         self._update_state(obs)
 
         # check done
-        done, toggle_list = self._check_done()
+        terminated, toggle_list = self._check_done()
         info = {'checkpoint_done': toggle_list}
+        #TODO : truncated is not used here but is suggested to be used in gymnasium
+        truncated = False
+        return obs, reward, terminated, truncated, info
 
-        return obs, reward, done, info
-
-    def reset(self, poses):
+    def reset(self, poses, seed = None, options = None):
+        #TODO: reset env using the seed and options which will be required by future versions of gymnasium
         """
         Reset the gym environment by given poses
 
@@ -327,7 +338,7 @@ class F110Env(gym.Env):
 
         # get no input observations
         action = np.zeros((self.num_agents, 2))
-        obs, reward, done, info = self.step(action)
+        obs, reward, done, truncated, info = self.step(action)
 
         self.render_obs = {
             'ego_idx': obs['ego_idx'],
@@ -338,7 +349,7 @@ class F110Env(gym.Env):
             'lap_counts': obs['lap_counts']
             }
         
-        return obs, reward, done, info
+        return obs, info
 
     def update_map(self, map_path, map_ext):
         """
